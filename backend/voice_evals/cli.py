@@ -5,6 +5,10 @@ Usage:
     voice-evals evaluate path/to/recording.wav
     voice-evals evaluate path/to/recording.mp3 --scenario scenarios/booking.yaml
     voice-evals evaluate path/to/recording.wav --model medium --output report.json
+
+    voice-evals inspect path/to/recording.wav
+    voice-evals inspect path/to/recording.wav --model small --output trace.json
+    voice-evals inspect path/to/recording.wav --json
 """
 
 from __future__ import annotations
@@ -183,6 +187,145 @@ def _print_report(report, verbose: bool):
                 console.print(f"[bold]{result.metric_name}[/bold] details:")
                 console.print(json.dumps(details, indent=2))
                 console.print()
+
+
+@app.command()
+def inspect(
+    audio_file: Path = typer.Argument(..., help="Path to audio file (WAV/MP3/OGG/M4A/FLAC)"),
+    model: str = typer.Option("base", "--model", "-m", help="Whisper model size"),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Save trace JSON to this path"),
+    table: bool = typer.Option(False, "--table", help="Show transcript table only"),
+    json_out: bool = typer.Option(False, "--json", help="Show JSON only"),
+):
+    """Transcribe a recording and print the VoiceTrace. Stops before LLM evaluation."""
+    if not audio_file.exists():
+        console.print(f"[red]Error: File not found: {audio_file}[/red]")
+        raise typer.Exit(1)
+
+    # If neither flag set, show both. If one or both set, show only those requested.
+    show_table = table or (not table and not json_out)
+    show_json = json_out or (not table and not json_out)
+
+    if show_table:
+        console.print(f"\n[bold]Voice Evals — Inspect[/bold] — [cyan]{audio_file.name}[/cyan]")
+        console.print(f"  Whisper model: [yellow]{model}[/yellow]\n")
+
+    # Load audio
+    with console.status("Loading audio..."):
+        from voice_evals.ingestion.audio import load_audio, split_channels
+        audio = load_audio(str(audio_file))
+
+    if show_table:
+        console.print(
+            f"  [green]✓[/green] Audio loaded — {audio.duration_ms / 1000:.1f}s, "
+            f"{audio.n_channels}ch, {audio.sample_rate}Hz"
+        )
+
+    # Load Whisper model (may download on first use)
+    if show_table:
+        console.print(f"  Loading Whisper '{model}' model (may download on first use)...")
+
+    try:
+        from voice_evals.ingestion.transcribe import (
+            WhisperBackend, merge_and_sort_turns,
+            transcribe_stereo, transcribe_mono,
+        )
+        from voice_evals.trace import (
+            AudioInfo, PlatformInfo, Speaker, TimingInfo, Turn, VoiceTrace,
+        )
+
+        backend = WhisperBackend(model_size=model)
+        # Force model load now so we can report when it's ready
+        backend._get_model()
+    except RuntimeError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+    if show_table:
+        console.print(f"  [green]✓[/green] Whisper '{model}' model ready")
+
+    # Transcribe
+    with console.status(f"Transcribing with Whisper ({model})..."):
+        trace = VoiceTrace(
+            audio_info=AudioInfo(
+                original_file=audio_file.name,
+                duration_ms=audio.duration_ms,
+                sample_rate=audio.sample_rate,
+                channels=audio.n_channels,
+                format=audio.format,
+                user_channel=0 if audio.is_stereo else None,
+                agent_channel=1 if audio.is_stereo else None,
+            ),
+            platform_info=PlatformInfo(platform="upload"),
+        )
+
+        if audio.is_stereo:
+            user_s, agent_s = split_channels(audio)
+            if show_table:
+                console.print("  Transcribing user channel (left)...")
+            user_result, agent_result = transcribe_stereo(user_s, agent_s, audio.sample_rate, backend)
+            if show_table:
+                console.print("  Transcribing agent channel (right)...")
+            interleaved = merge_and_sort_turns(user_result, agent_result)
+            for speaker_label, seg in interleaved:
+                trace.add_turn(Turn(
+                    speaker=Speaker.USER if speaker_label == "user" else Speaker.AGENT,
+                    transcript=seg.text,
+                    transcript_confidence=seg.confidence,
+                    timing=TimingInfo(speech_start_ms=seg.start_ms, speech_end_ms=seg.end_ms, source="vad"),
+                ))
+        else:
+            if show_table:
+                console.print("  Mono audio — transcribing as single stream...")
+            result = transcribe_mono(audio.mono_mix, audio.sample_rate, backend)
+            for i, seg in enumerate(result.segments):
+                trace.add_turn(Turn(
+                    speaker=Speaker.USER if i % 2 == 0 else Speaker.AGENT,
+                    transcript=seg.text,
+                    transcript_confidence=seg.confidence,
+                    timing=TimingInfo(speech_start_ms=seg.start_ms, speech_end_ms=seg.end_ms, source="estimated"),
+                ))
+
+    if show_table:
+        console.print(f"  [green]✓[/green] Transcription complete — {len(trace.turns)} turns detected\n")
+
+        # Print transcript table
+        transcript_table = Table(title="Transcript", show_header=True, header_style="bold")
+        transcript_table.add_column("#", style="dim", width=4)
+        transcript_table.add_column("Speaker", width=8)
+        transcript_table.add_column("Transcript")
+        transcript_table.add_column("Start", justify="right", width=10)
+        transcript_table.add_column("Confidence", justify="right", width=10)
+
+        for i, turn in enumerate(trace.turns):
+            color = "cyan" if turn.speaker == Speaker.USER else "green"
+            start = f"{turn.timing.speech_start_ms / 1000:.2f}s" if turn.timing and turn.timing.speech_start_ms is not None else "—"
+            conf = f"{turn.transcript_confidence:.0%}" if turn.transcript_confidence is not None else "—"
+            transcript_table.add_row(
+                str(i + 1),
+                f"[{color}]{turn.speaker.value}[/{color}]",
+                turn.transcript or "",
+                start,
+                conf,
+            )
+
+        console.print(transcript_table)
+        console.print()
+
+    # Print JSON
+    if show_json:
+        trace_json = json.dumps(trace.model_dump(mode="json"), indent=2, default=str)
+        if show_table:
+            console.print("[dim]--- Full VoiceTrace JSON ---[/dim]")
+        print(trace_json)
+
+    # Save to file
+    if output:
+        trace_json = json.dumps(trace.model_dump(mode="json"), indent=2, default=str)
+        with open(output, "w") as f:
+            f.write(trace_json)
+        if show_table:
+            console.print(f"\n[dim]Trace saved to {output}[/dim]")
 
 
 if __name__ == "__main__":
