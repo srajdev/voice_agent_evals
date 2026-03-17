@@ -284,6 +284,8 @@ def inspect(
                 raise typer.Exit(1)
         if show_table:
             console.print(f"  [green]✓[/green] Detected {diarized.num_speakers} speaker(s): {speaker_map}")
+        if show_table and diarized.overlap_regions_ms:
+            console.print(f"  [yellow]⚡[/yellow] Detected {len(diarized.overlap_regions_ms)} overlap region(s)")
         for seg in diarized.segments:
             spk = speaker_map.get(seg.speaker, "user")
             trace.add_turn(Turn(
@@ -291,6 +293,7 @@ def inspect(
                 transcript=seg.text,
                 transcript_confidence=seg.confidence,
                 timing=TimingInfo(speech_start_ms=seg.start_ms, speech_end_ms=seg.end_ms, source="vad"),
+                platform_metadata={"is_overlap": seg.is_overlap},
             ))
 
     if show_table:
@@ -304,12 +307,14 @@ def inspect(
         transcript_table.add_column("Start", justify="right", width=10)
         transcript_table.add_column("End", justify="right", width=10)
         transcript_table.add_column("Confidence", justify="right", width=10)
+        transcript_table.add_column("Overlap", justify="center", width=9)
 
         for i, turn in enumerate(trace.turns):
             color = "cyan" if turn.speaker == Speaker.USER else "green"
             start = f"{turn.timing.speech_start_ms / 1000:.2f}s" if turn.timing and turn.timing.speech_start_ms is not None else "—"
             end = f"{turn.timing.speech_end_ms / 1000:.2f}s" if turn.timing and turn.timing.speech_end_ms is not None else "—"
             conf = f"{turn.transcript_confidence:.0%}" if turn.transcript_confidence is not None else "—"
+            overlap = "[yellow]yes[/yellow]" if turn.platform_metadata.get("is_overlap") else "—"
             transcript_table.add_row(
                 str(i + 1),
                 f"[{color}]{turn.speaker.value}[/{color}]",
@@ -317,6 +322,7 @@ def inspect(
                 start,
                 end,
                 conf,
+                overlap,
             )
 
         console.print(transcript_table)

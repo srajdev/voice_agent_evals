@@ -59,6 +59,7 @@ class DiarizedSegment:
     end_ms: float
     speaker: str  # e.g. "SPEAKER_00", "SPEAKER_01"
     confidence: float | None = None
+    is_overlap: bool = False  # True if pyannote detected overlapping speech in this window
 
 
 @dataclass
@@ -69,6 +70,7 @@ class DiarizedResult:
     language: str | None = None
     backend: str = "whisperx"
     num_speakers: int | None = None
+    overlap_regions_ms: list[tuple[float, float]] = field(default_factory=list)  # (start_ms, end_ms)
 
 
 class WhisperXBackend(TranscriptionBackend):
@@ -222,12 +224,41 @@ class WhisperXBackend(TranscriptionBackend):
                 current_words, current_speaker, current_start
             ))
 
+        # Step 6: Overlap detection via pyannote
+        overlap_regions_ms: list[tuple[float, float]] = []
+        try:
+            from pyannote.audio import Pipeline as PyannotePipeline
+            overlap_pipeline = PyannotePipeline.from_pretrained(
+                "pyannote/overlapped-speech-detection",
+                use_auth_token=hf_token,
+            )
+            import torch
+            audio_tensor = torch.tensor(audio_samples).unsqueeze(0)  # (1, samples)
+            overlap_result = overlap_pipeline({
+                "waveform": audio_tensor,
+                "sample_rate": 16000,
+            })
+            for segment, _, _ in overlap_result.itertracks(yield_label=True):
+                overlap_regions_ms.append((segment.start * 1000, segment.end * 1000))
+        except Exception:
+            # Overlap detection is best-effort — don't fail the whole transcription
+            pass
+
+        # Flag segments that fall within an overlap region (>200ms overlap threshold)
+        for seg in diarized_segments:
+            for ov_start, ov_end in overlap_regions_ms:
+                overlap_ms = min(seg.end_ms, ov_end) - max(seg.start_ms, ov_start)
+                if overlap_ms >= 200:
+                    seg.is_overlap = True
+                    break
+
         speakers = {s.speaker for s in diarized_segments}
         return DiarizedResult(
             segments=diarized_segments,
             language=language,
             backend="whisperx",
             num_speakers=len(speakers),
+            overlap_regions_ms=overlap_regions_ms,
         )
 
     def _flush_segment(
