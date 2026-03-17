@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+# General rules of behaviour
+1. Before writing any code, describe your approach and wait for approval. Always ask clarifying questions before writing any code if requirements ar      e     ambiguous.
+2. If a task requires changes to more than 3 files, stop and break it into smaller tasks first.
+3. After writing code, list what could break and suggest tests to cover it.
+4. When there’s a bug, start by writing a test that reproduces it, then fix it until the test passes.
+5. Every time I correct you, add a new rule to the CLAUDE .md file so it never happens again.
+6. Everytime you start a new feature, create a new branch so we can track
+
 ## Project Overview
 
 **Voice Evals** is an open-source framework for evaluating voice AI agents. It takes a voice call recording and scores it across four dimensions using Claude as an LLM judge: Conversation Quality, Multi-turn Coherence, Intent Accuracy, and Task Completion.
