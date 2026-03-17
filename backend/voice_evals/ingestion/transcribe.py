@@ -6,6 +6,9 @@ Pluggable: implement TranscriptionBackend to add Deepgram, AssemblyAI, etc.
 
 For stereo audio, transcribes each channel separately to get clean per-speaker turns.
 For mono audio, uses Whisper's word-level timestamps to segment turns (best-effort).
+
+WhisperXBackend: uses whisperx (Whisper + pyannote diarization) for accurate
+speaker attribution on mono audio. Requires HF_TOKEN env var.
 """
 
 from __future__ import annotations
@@ -125,6 +128,209 @@ class WhisperBackend(TranscriptionBackend):
             language=result.get("language"),
             backend="whisper",
         )
+
+
+@dataclass
+class DiarizedSegment:
+    """A transcribed segment with speaker identity from diarization."""
+
+    text: str
+    start_ms: float
+    end_ms: float
+    speaker: str  # e.g. "SPEAKER_00", "SPEAKER_01"
+    confidence: float | None = None
+
+
+@dataclass
+class DiarizedResult:
+    """Full diarized transcription result — speaker-attributed segments."""
+
+    segments: list[DiarizedSegment]
+    language: str | None = None
+    backend: str = "whisperx"
+    num_speakers: int | None = None
+
+
+class WhisperXBackend:
+    """
+    WhisperX transcription + speaker diarization.
+
+    Combines Whisper (transcription) with pyannote (diarization) to produce
+    speaker-attributed segments from mono audio. Much more accurate than the
+    alternating-index heuristic used by WhisperBackend on mono audio.
+
+    Requires:
+        - pip install whisperx
+        - HF_TOKEN env var set to a HuggingFace token with pyannote model access
+          (accept license at https://huggingface.co/pyannote/speaker-diarization-3.1)
+
+    Args:
+        model_size: Whisper model size (tiny/base/small/medium/large-v2/large-v3)
+        num_speakers: Optional hint for number of speakers. If None, auto-detected.
+        device: "cuda" or "cpu". Defaults to cuda if available, else cpu.
+    """
+
+    def __init__(
+        self,
+        model_size: str = "base",
+        num_speakers: int | None = None,
+        device: str | None = None,
+    ):
+        self.model_size = model_size
+        self.num_speakers = num_speakers
+        self.device = device
+        self._model = None  # lazy load
+
+    def _get_device(self) -> str:
+        if self.device:
+            return self.device
+        try:
+            import torch
+            return "cuda" if torch.cuda.is_available() else "cpu"
+        except ImportError:
+            return "cpu"
+
+    def _get_model(self):
+        if self._model is None:
+            try:
+                import whisperx
+            except ImportError as e:
+                raise RuntimeError(
+                    "whisperx not installed. Run: pip install whisperx"
+                ) from e
+            device = self._get_device()
+            compute_type = "float16" if device == "cuda" else "int8"
+            self._model = whisperx.load_model(self.model_size, device, compute_type=compute_type)
+        return self._model
+
+    def transcribe_with_diarization(
+        self, audio_samples: np.ndarray, sample_rate: int
+    ) -> DiarizedResult:
+        """
+        Transcribe mono audio and return speaker-attributed segments.
+
+        This is separate from the TranscriptionBackend.transcribe() interface
+        because diarization produces speaker labels rather than per-channel results.
+        """
+        try:
+            import whisperx
+        except ImportError as e:
+            raise RuntimeError("whisperx not installed. Run: pip install whisperx") from e
+
+        hf_token = os.environ.get("HF_TOKEN")
+        if not hf_token:
+            raise RuntimeError(
+                "HF_TOKEN env var not set. WhisperX needs a HuggingFace token to download "
+                "the pyannote diarization model. Set HF_TOKEN in your .env file.\n"
+                "You also need to accept the model license at: "
+                "https://huggingface.co/pyannote/speaker-diarization-3.1"
+            )
+
+        device = self._get_device()
+        model = self._get_model()
+
+        # Ensure float32 mono at 16kHz
+        if audio_samples.ndim > 1:
+            audio_samples = audio_samples.mean(axis=0)
+        if sample_rate != 16000:
+            import librosa
+            audio_samples = librosa.resample(audio_samples, orig_sr=sample_rate, target_sr=16000)
+
+        # Step 1: Transcribe with Whisper via whisperx
+        result = model.transcribe(audio_samples, batch_size=16)
+        language = result.get("language")
+
+        # Step 2: Align word timestamps
+        align_model, metadata = whisperx.load_align_model(language_code=language, device=device)
+        result = whisperx.align(result["segments"], align_model, metadata, audio_samples, device)
+
+        # Step 3: Diarize
+        diarize_model = whisperx.DiarizationPipeline(use_auth_token=hf_token, device=device)
+        diarize_kwargs = {}
+        if self.num_speakers:
+            diarize_kwargs["num_speakers"] = self.num_speakers
+        diarize_segments = diarize_model(audio_samples, **diarize_kwargs)
+
+        # Step 4: Assign speaker labels to words
+        result = whisperx.assign_word_speakers(diarize_segments, result)
+
+        # Step 5: Build DiarizedSegments — group consecutive words by speaker
+        diarized_segments: list[DiarizedSegment] = []
+        current_speaker: str | None = None
+        current_words: list[dict] = []
+        current_start: float = 0.0
+
+        for seg in result.get("segments", []):
+            for word in seg.get("words", []):
+                speaker = word.get("speaker") or seg.get("speaker") or "SPEAKER_00"
+                if speaker != current_speaker:
+                    # Flush current group
+                    if current_words and current_speaker is not None:
+                        text = " ".join(w["word"].strip() for w in current_words)
+                        end_ms = current_words[-1].get("end", 0) * 1000
+                        probs = [w["score"] for w in current_words if w.get("score") is not None]
+                        confidence = float(np.mean(probs)) if probs else None
+                        diarized_segments.append(DiarizedSegment(
+                            text=text,
+                            start_ms=current_start,
+                            end_ms=end_ms,
+                            speaker=current_speaker,
+                            confidence=confidence,
+                        ))
+                    current_speaker = speaker
+                    current_words = [word]
+                    current_start = word.get("start", 0) * 1000
+                else:
+                    current_words.append(word)
+
+        # Flush last group
+        if current_words and current_speaker is not None:
+            text = " ".join(w["word"].strip() for w in current_words)
+            end_ms = current_words[-1].get("end", 0) * 1000
+            probs = [w["score"] for w in current_words if w.get("score") is not None]
+            confidence = float(np.mean(probs)) if probs else None
+            diarized_segments.append(DiarizedSegment(
+                text=text,
+                start_ms=current_start,
+                end_ms=end_ms,
+                speaker=current_speaker,
+                confidence=confidence,
+            ))
+
+        speakers = {s.speaker for s in diarized_segments}
+        return DiarizedResult(
+            segments=diarized_segments,
+            language=language,
+            backend="whisperx",
+            num_speakers=len(speakers),
+        )
+
+
+def transcribe_with_whisperx(
+    samples: np.ndarray,
+    sample_rate: int,
+    backend: WhisperXBackend,
+) -> tuple[DiarizedResult, dict[str, str]]:
+    """
+    Transcribe mono audio with WhisperX diarization.
+
+    Returns (DiarizedResult, speaker_map) where speaker_map maps
+    diarization speaker IDs (e.g. "SPEAKER_00") to "user" or "agent".
+    The first speaker heard is assumed to be the agent (typical for voice AI calls).
+    """
+    result = backend.transcribe_with_diarization(samples, sample_rate)
+
+    # Map speakers to user/agent by order of first appearance
+    # Convention: first speaker = agent (they typically speak first on AI calls)
+    seen: list[str] = []
+    for seg in result.segments:
+        if seg.speaker not in seen:
+            seen.append(seg.speaker)
+    speaker_map: dict[str, str] = {}
+    for i, spk in enumerate(seen):
+        speaker_map[spk] = "agent" if i == 0 else "user"
+
+    return result, speaker_map
 
 
 def transcribe_stereo(

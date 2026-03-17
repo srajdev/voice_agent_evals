@@ -196,10 +196,16 @@ def inspect(
     output: Optional[Path] = typer.Option(None, "--output", "-o", help="Save trace JSON to this path"),
     table: bool = typer.Option(False, "--table", help="Show transcript table only"),
     json_out: bool = typer.Option(False, "--json", help="Show JSON only"),
+    backend: str = typer.Option("whisper", "--backend", "-b", help="Transcription backend: whisper, whisperx"),
+    num_speakers: Optional[int] = typer.Option(None, "--speakers", help="Number of speakers (whisperx only, auto-detected if omitted)"),
 ):
     """Transcribe a recording and print the VoiceTrace. Stops before LLM evaluation."""
     if not audio_file.exists():
         console.print(f"[red]Error: File not found: {audio_file}[/red]")
+        raise typer.Exit(1)
+
+    if backend not in ("whisper", "whisperx"):
+        console.print(f"[red]Error: Unknown backend '{backend}'. Choose: whisper, whisperx[/red]")
         raise typer.Exit(1)
 
     # If neither flag set, show both. If one or both set, show only those requested.
@@ -208,7 +214,7 @@ def inspect(
 
     if show_table:
         console.print(f"\n[bold]Voice Evals — Inspect[/bold] — [cyan]{audio_file.name}[/cyan]")
-        console.print(f"  Whisper model: [yellow]{model}[/yellow]\n")
+        console.print(f"  Whisper model: [yellow]{model}[/yellow]  Backend: [yellow]{backend}[/yellow]\n")
 
     # Load audio
     with console.status("Loading audio..."):
@@ -221,70 +227,105 @@ def inspect(
             f"{audio.n_channels}ch, {audio.sample_rate}Hz"
         )
 
-    # Load Whisper model (may download on first use)
-    if show_table:
-        console.print(f"  Loading Whisper '{model}' model (may download on first use)...")
+    from voice_evals.trace import (
+        AudioInfo, PlatformInfo, Speaker, TimingInfo, Turn, VoiceTrace,
+    )
 
-    try:
-        from voice_evals.ingestion.transcribe import (
-            WhisperBackend, merge_and_sort_turns,
-            transcribe_stereo, transcribe_mono,
-        )
-        from voice_evals.trace import (
-            AudioInfo, PlatformInfo, Speaker, TimingInfo, Turn, VoiceTrace,
-        )
+    trace = VoiceTrace(
+        audio_info=AudioInfo(
+            original_file=audio_file.name,
+            duration_ms=audio.duration_ms,
+            sample_rate=audio.sample_rate,
+            channels=audio.n_channels,
+            format=audio.format,
+            user_channel=0 if audio.is_stereo else None,
+            agent_channel=1 if audio.is_stereo else None,
+        ),
+        platform_info=PlatformInfo(platform="upload"),
+    )
 
-        backend = WhisperBackend(model_size=model)
-        # Force model load now so we can report when it's ready
-        backend._get_model()
-    except RuntimeError as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise typer.Exit(1)
+    if backend == "whisperx":
+        # --- WhisperX path: transcription + diarization on mono mix ---
+        if show_table:
+            console.print(f"  Loading WhisperX '{model}' model (may download on first use)...")
+        try:
+            from voice_evals.ingestion.transcribe import WhisperXBackend, transcribe_with_whisperx
+            wx_backend = WhisperXBackend(model_size=model, num_speakers=num_speakers)
+            wx_backend._get_model()
+        except RuntimeError as e:
+            console.print(f"[red]Error: {e}[/red]")
+            raise typer.Exit(1)
 
-    if show_table:
-        console.print(f"  [green]✓[/green] Whisper '{model}' model ready")
+        if show_table:
+            console.print(f"  [green]✓[/green] WhisperX '{model}' model ready")
 
-    # Transcribe
-    with console.status(f"Transcribing with Whisper ({model})..."):
-        trace = VoiceTrace(
-            audio_info=AudioInfo(
-                original_file=audio_file.name,
-                duration_ms=audio.duration_ms,
-                sample_rate=audio.sample_rate,
-                channels=audio.n_channels,
-                format=audio.format,
-                user_channel=0 if audio.is_stereo else None,
-                agent_channel=1 if audio.is_stereo else None,
-            ),
-            platform_info=PlatformInfo(platform="upload"),
-        )
-
-        if audio.is_stereo:
-            user_s, agent_s = split_channels(audio)
+        with console.status("Transcribing + diarizing with WhisperX..."):
             if show_table:
-                console.print("  Transcribing user channel (left)...")
-            user_result, agent_result = transcribe_stereo(user_s, agent_s, audio.sample_rate, backend)
-            if show_table:
-                console.print("  Transcribing agent channel (right)...")
-            interleaved = merge_and_sort_turns(user_result, agent_result)
-            for speaker_label, seg in interleaved:
-                trace.add_turn(Turn(
-                    speaker=Speaker.USER if speaker_label == "user" else Speaker.AGENT,
-                    transcript=seg.text,
-                    transcript_confidence=seg.confidence,
-                    timing=TimingInfo(speech_start_ms=seg.start_ms, speech_end_ms=seg.end_ms, source="vad"),
-                ))
-        else:
-            if show_table:
-                console.print("  Mono audio — transcribing as single stream...")
-            result = transcribe_mono(audio.mono_mix, audio.sample_rate, backend)
-            for i, seg in enumerate(result.segments):
-                trace.add_turn(Turn(
-                    speaker=Speaker.USER if i % 2 == 0 else Speaker.AGENT,
-                    transcript=seg.text,
-                    transcript_confidence=seg.confidence,
-                    timing=TimingInfo(speech_start_ms=seg.start_ms, speech_end_ms=seg.end_ms, source="estimated"),
-                ))
+                console.print("  Running transcription and speaker diarization...")
+            try:
+                diarized, speaker_map = transcribe_with_whisperx(
+                    audio.mono_mix, audio.sample_rate, wx_backend
+                )
+            except RuntimeError as e:
+                console.print(f"[red]Error: {e}[/red]")
+                raise typer.Exit(1)
+
+        if show_table:
+            console.print(f"  [green]✓[/green] Detected {diarized.num_speakers} speaker(s): {speaker_map}")
+
+        for seg in diarized.segments:
+            spk = speaker_map.get(seg.speaker, "user")
+            trace.add_turn(Turn(
+                speaker=Speaker.AGENT if spk == "agent" else Speaker.USER,
+                transcript=seg.text,
+                transcript_confidence=seg.confidence,
+                timing=TimingInfo(speech_start_ms=seg.start_ms, speech_end_ms=seg.end_ms, source="vad"),
+            ))
+
+    else:
+        # --- Default Whisper path ---
+        if show_table:
+            console.print(f"  Loading Whisper '{model}' model (may download on first use)...")
+        try:
+            from voice_evals.ingestion.transcribe import (
+                WhisperBackend, merge_and_sort_turns, transcribe_stereo, transcribe_mono,
+            )
+            whisper_backend = WhisperBackend(model_size=model)
+            whisper_backend._get_model()
+        except RuntimeError as e:
+            console.print(f"[red]Error: {e}[/red]")
+            raise typer.Exit(1)
+
+        if show_table:
+            console.print(f"  [green]✓[/green] Whisper '{model}' model ready")
+
+        with console.status(f"Transcribing with Whisper ({model})..."):
+            if audio.is_stereo:
+                user_s, agent_s = split_channels(audio)
+                if show_table:
+                    console.print("  Transcribing user channel (left)...")
+                user_result, agent_result = transcribe_stereo(user_s, agent_s, audio.sample_rate, whisper_backend)
+                if show_table:
+                    console.print("  Transcribing agent channel (right)...")
+                interleaved = merge_and_sort_turns(user_result, agent_result)
+                for speaker_label, seg in interleaved:
+                    trace.add_turn(Turn(
+                        speaker=Speaker.USER if speaker_label == "user" else Speaker.AGENT,
+                        transcript=seg.text,
+                        transcript_confidence=seg.confidence,
+                        timing=TimingInfo(speech_start_ms=seg.start_ms, speech_end_ms=seg.end_ms, source="vad"),
+                    ))
+            else:
+                if show_table:
+                    console.print("  Mono audio — transcribing as single stream (no diarization)...")
+                result = transcribe_mono(audio.mono_mix, audio.sample_rate, whisper_backend)
+                for i, seg in enumerate(result.segments):
+                    trace.add_turn(Turn(
+                        speaker=Speaker.USER if i % 2 == 0 else Speaker.AGENT,
+                        transcript=seg.text,
+                        transcript_confidence=seg.confidence,
+                        timing=TimingInfo(speech_start_ms=seg.start_ms, speech_end_ms=seg.end_ms, source="estimated"),
+                    ))
 
     if show_table:
         console.print(f"  [green]✓[/green] Transcription complete — {len(trace.turns)} turns detected\n")
