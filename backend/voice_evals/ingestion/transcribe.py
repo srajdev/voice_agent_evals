@@ -358,10 +358,11 @@ class AssemblyAIBackend:
         config = aai.TranscriptionConfig(
             speaker_labels=True,
             speakers_expected=self.num_speakers,
+            speech_models=["universal-3-pro", "universal-2"],
+            language_detection=True,
         )
 
-        transcriber = aai.Transcriber()
-        transcript = transcriber.transcribe(audio_path, config=config)
+        transcript = aai.Transcriber(config=config).transcribe(audio_path)
 
         if transcript.status == aai.TranscriptStatus.error:
             raise RuntimeError(f"AssemblyAI transcription failed: {transcript.error}")
