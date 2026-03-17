@@ -302,17 +302,20 @@ def inspect(
         transcript_table.add_column("Speaker", width=8)
         transcript_table.add_column("Transcript")
         transcript_table.add_column("Start", justify="right", width=10)
+        transcript_table.add_column("End", justify="right", width=10)
         transcript_table.add_column("Confidence", justify="right", width=10)
 
         for i, turn in enumerate(trace.turns):
             color = "cyan" if turn.speaker == Speaker.USER else "green"
             start = f"{turn.timing.speech_start_ms / 1000:.2f}s" if turn.timing and turn.timing.speech_start_ms is not None else "—"
+            end = f"{turn.timing.speech_end_ms / 1000:.2f}s" if turn.timing and turn.timing.speech_end_ms is not None else "—"
             conf = f"{turn.transcript_confidence:.0%}" if turn.transcript_confidence is not None else "—"
             transcript_table.add_row(
                 str(i + 1),
                 f"[{color}]{turn.speaker.value}[/{color}]",
                 turn.transcript or "",
                 start,
+                end,
                 conf,
             )
 
