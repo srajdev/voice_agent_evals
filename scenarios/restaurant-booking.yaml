@@ -1,0 +1,24 @@
+# Example scenario: restaurant reservation booking agent
+scenario_id: restaurant-booking-v1
+description: >
+  User calls a restaurant voice AI to book a table.
+  Tests whether the agent correctly collects reservation details
+  and confirms the booking.
+
+expected_task: >
+  Book a dinner reservation for 2 people at 7:30pm on Friday
+
+completion_criteria: >
+  Agent confirms: (1) party size, (2) date/time, (3) contact name or phone number.
+  Confirmation number or summary is provided at the end.
+
+user_persona: >
+  Adult customer, comfortable with voice AI, clear speech.
+  Wants a table for 2 at 7:30pm this Friday.
+
+expected_intents:
+  - request_reservation
+  - provide_party_size
+  - provide_date_time
+  - provide_contact_info
+  - confirm_booking
