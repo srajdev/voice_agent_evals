@@ -315,6 +315,100 @@ def transcribe_with_diarization(
     return result, speaker_map
 
 
+class AssemblyAIBackend:
+    """
+    AssemblyAI transcription + speaker diarization via cloud API.
+
+    Uploads the audio file to AssemblyAI, runs transcription and speaker
+    diarization server-side, and returns speaker-attributed utterances.
+
+    Requires:
+        - pip install assemblyai
+        - ASSEMBLYAI_API_KEY env var
+
+    Args:
+        num_speakers: Optional hint for number of speakers. If None, auto-detected.
+    """
+
+    def __init__(self, num_speakers: int | None = None):
+        self.num_speakers = num_speakers
+
+    def transcribe_with_diarization(
+        self, audio_path: str, sample_rate: int | None = None
+    ) -> DiarizedResult:
+        """
+        Transcribe an audio file with speaker diarization via AssemblyAI API.
+        Takes a file path (not raw samples) since AssemblyAI handles format conversion.
+        """
+        try:
+            import assemblyai as aai
+        except ImportError as e:
+            raise RuntimeError(
+                "assemblyai not installed. Run: uv add assemblyai"
+            ) from e
+
+        api_key = os.environ.get("ASSEMBLYAI_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "ASSEMBLYAI_API_KEY env var not set. Add it to your .env file."
+            )
+
+        aai.settings.api_key = api_key
+
+        config = aai.TranscriptionConfig(
+            speaker_labels=True,
+            speakers_expected=self.num_speakers,
+        )
+
+        transcriber = aai.Transcriber()
+        transcript = transcriber.transcribe(audio_path, config=config)
+
+        if transcript.status == aai.TranscriptStatus.error:
+            raise RuntimeError(f"AssemblyAI transcription failed: {transcript.error}")
+
+        diarized_segments: list[DiarizedSegment] = []
+        for utt in transcript.utterances or []:
+            diarized_segments.append(DiarizedSegment(
+                text=utt.text,
+                start_ms=float(utt.start),
+                end_ms=float(utt.end),
+                speaker=f"SPEAKER_{utt.speaker}",
+                confidence=utt.confidence,
+            ))
+
+        speakers = {s.speaker for s in diarized_segments}
+        return DiarizedResult(
+            segments=diarized_segments,
+            language=transcript.language_code,
+            backend="assemblyai",
+            num_speakers=len(speakers),
+        )
+
+
+def transcribe_with_assemblyai(
+    audio_path: str,
+    backend: AssemblyAIBackend,
+) -> tuple[DiarizedResult, dict[str, str]]:
+    """
+    Transcribe an audio file with AssemblyAI diarization.
+
+    Returns (DiarizedResult, speaker_map) where speaker_map maps
+    AssemblyAI speaker IDs (e.g. "SPEAKER_A") to "user" or "agent".
+    Convention: first speaker heard = agent (typical for voice AI calls).
+    """
+    result = backend.transcribe_with_diarization(audio_path)
+
+    seen: list[str] = []
+    for seg in result.segments:
+        if seg.speaker not in seen:
+            seen.append(seg.speaker)
+    speaker_map: dict[str, str] = {}
+    for i, spk in enumerate(seen):
+        speaker_map[spk] = "agent" if i == 0 else "user"
+
+    return result, speaker_map
+
+
 def merge_and_sort_turns(
     user_result: TranscriptionResult,
     agent_result: TranscriptionResult,
