@@ -17,10 +17,10 @@ from fastapi.responses import JSONResponse
 from voice_evals.evaluator import Evaluator
 from voice_evals.ingestion.audio import load_audio, split_channels
 from voice_evals.ingestion.transcribe import (
-    WhisperBackend,
+    WhisperXBackend,
     merge_and_sort_turns,
     transcribe_stereo,
-    transcribe_mono,
+    transcribe_with_diarization,
 )
 from voice_evals.trace import (
     AudioInfo,
@@ -125,7 +125,7 @@ async def _build_trace(
         scenario=scenario,
     )
 
-    backend = WhisperBackend(model_size=whisper_model)
+    backend = WhisperXBackend(model_size=whisper_model)
 
     if audio.is_stereo:
         user_samples, agent_samples = split_channels(audio)
@@ -145,20 +145,19 @@ async def _build_trace(
                 ),
             ))
     else:
-        # Mono: transcribe as a single stream, all turns attributed to "unknown"
-        # Caller can post-process if they know speaker order
-        result = transcribe_mono(audio.mono_mix, audio.sample_rate, backend)
-        for i, seg in enumerate(result.segments):
-            # Alternate user/agent by segment index (heuristic for mono)
-            speaker = Speaker.USER if i % 2 == 0 else Speaker.AGENT
+        diarized, speaker_map = transcribe_with_diarization(
+            audio.mono_mix, audio.sample_rate, backend
+        )
+        for seg in diarized.segments:
+            spk = speaker_map.get(seg.speaker, "user")
             trace.add_turn(Turn(
-                speaker=speaker,
+                speaker=Speaker.AGENT if spk == "agent" else Speaker.USER,
                 transcript=seg.text,
                 transcript_confidence=seg.confidence,
                 timing=TimingInfo(
                     speech_start_ms=seg.start_ms,
                     speech_end_ms=seg.end_ms,
-                    source="estimated",
+                    source="vad",
                 ),
             ))
 
