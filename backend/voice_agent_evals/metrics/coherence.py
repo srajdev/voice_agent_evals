@@ -1,5 +1,5 @@
 """
-Multi-Turn Coherence Metric (Tier 1 — LLM Judge)
+Multi-Turn Coherence Metric (Outcome — LLM Judge)
 
 Evaluates whether the agent maintains context and coherence across the full conversation:
 - Remembers information shared earlier in the call

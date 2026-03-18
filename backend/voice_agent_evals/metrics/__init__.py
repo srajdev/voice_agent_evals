@@ -1,4 +1,4 @@
-"""Voice evaluation metrics — Tier 1, 2, and 3 metrics."""
+"""Voice evaluation metrics — outcome, technical, and quality metrics."""
 
 from voice_agent_evals.metrics.base import MetricResult, MetricScore
 from voice_agent_evals.metrics.coherence import CoherenceMetric
@@ -16,16 +16,16 @@ from voice_agent_evals.metrics.vad_quality import InterruptionRecoveryMetric, Va
 __all__ = [
     "MetricResult",
     "MetricScore",
-    # Tier 1
+    # Outcome metrics
     "ConversationQualityMetric",
     "CoherenceMetric",
     "IntentAccuracyMetric",
     "TaskCompletionMetric",
-    # Tier 2
+    # Technical metrics
     "ResponseLatencyMetric",
     "VadQualityMetric",
     "InterruptionRecoveryMetric",
-    # Tier 3
+    # Quality metrics
     "VerbosityMatchMetric",
     "EmpathyMetric",
     "VocabularyMatchMetric",

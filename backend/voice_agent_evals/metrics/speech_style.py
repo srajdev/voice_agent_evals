@@ -1,5 +1,5 @@
 """
-Speech Style Metrics (Tier 3 — LLM-judged + Algorithmic)
+Speech Style Metrics (Quality — LLM-judged + Algorithmic)
 
 Three metrics in one module:
 

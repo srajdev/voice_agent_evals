@@ -1,5 +1,5 @@
 """
-Response Latency Metric (Tier 2 — Algorithmic)
+Response Latency Metric (Technical — Algorithmic)
 
 Measures the time between the user finishing speaking and the agent starting to speak.
 Operates on timing data from VoiceTrace turns; returns `no_data` when timing is absent.

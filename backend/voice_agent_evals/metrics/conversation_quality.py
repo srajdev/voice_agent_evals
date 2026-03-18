@@ -1,5 +1,5 @@
 """
-Conversation Quality Metric (Tier 1 — LLM Judge)
+Conversation Quality Metric (Outcome — LLM Judge)
 
 Evaluates whether the voice agent follows good voice-first communication principles:
 - Short, natural sentences (not reading a bulleted list)

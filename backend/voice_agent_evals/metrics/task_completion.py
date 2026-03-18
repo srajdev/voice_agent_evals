@@ -1,5 +1,5 @@
 """
-Task Completion Metric (Tier 1 — LLM Judge)
+Task Completion Metric (Outcome — LLM Judge)
 
 Evaluates whether the scripted task was completed end-to-end.
 - Binary: task completed yes/no
