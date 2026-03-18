@@ -2,8 +2,8 @@
 Evaluator orchestrator — runs all metrics against a VoiceTrace, produces a JSON report.
 
 Usage:
-    from voice_evals.evaluator import Evaluator
-    from voice_evals.trace import VoiceTrace
+    from voice_agent_evals.evaluator import Evaluator
+    from voice_agent_evals.trace import VoiceTrace
 
     evaluator = Evaluator()
     report = evaluator.run(trace)
@@ -18,19 +18,19 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from voice_evals.metrics.base import BaseMetric, MetricResult
-from voice_evals.metrics.coherence import CoherenceMetric
-from voice_evals.metrics.conversation_quality import ConversationQualityMetric
-from voice_evals.metrics.intent import IntentAccuracyMetric
-from voice_evals.metrics.response_latency import ResponseLatencyMetric
-from voice_evals.metrics.speech_style import (
+from voice_agent_evals.metrics.base import BaseMetric, MetricResult
+from voice_agent_evals.metrics.coherence import CoherenceMetric
+from voice_agent_evals.metrics.conversation_quality import ConversationQualityMetric
+from voice_agent_evals.metrics.intent import IntentAccuracyMetric
+from voice_agent_evals.metrics.response_latency import ResponseLatencyMetric
+from voice_agent_evals.metrics.speech_style import (
     EmpathyMetric,
     VerbosityMatchMetric,
     VocabularyMatchMetric,
 )
-from voice_evals.metrics.task_completion import TaskCompletionMetric
-from voice_evals.metrics.vad_quality import InterruptionRecoveryMetric, VadQualityMetric
-from voice_evals.trace import VoiceTrace
+from voice_agent_evals.metrics.task_completion import TaskCompletionMetric
+from voice_agent_evals.metrics.vad_quality import InterruptionRecoveryMetric, VadQualityMetric
+from voice_agent_evals.trace import VoiceTrace
 
 
 class EvaluationReport(BaseModel):
@@ -109,7 +109,7 @@ class Evaluator:
                 results.append(result)
             except Exception as e:
                 # Don't let one metric failure kill the entire evaluation
-                from voice_evals.metrics.base import MetricResult, MetricScore
+                from voice_agent_evals.metrics.base import MetricResult, MetricScore
                 results.append(
                     MetricResult(
                         metric_name=metric.name,

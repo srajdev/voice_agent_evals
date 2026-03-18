@@ -1,7 +1,7 @@
 """Tests for VoiceTrace schema."""
 
 import pytest
-from voice_evals.trace import (
+from voice_agent_evals.trace import (
     AudioInfo,
     PlatformInfo,
     ScenarioConfig,

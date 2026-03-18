@@ -14,15 +14,15 @@ import yaml
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
-from voice_evals.evaluator import Evaluator
-from voice_evals.ingestion.audio import load_audio, split_channels
-from voice_evals.ingestion.transcribe import (
+from voice_agent_evals.evaluator import Evaluator
+from voice_agent_evals.ingestion.audio import load_audio, split_channels
+from voice_agent_evals.ingestion.transcribe import (
     WhisperXBackend,
     merge_and_sort_turns,
     transcribe_stereo,
     transcribe_with_diarization,
 )
-from voice_evals.trace import (
+from voice_agent_evals.trace import (
     AudioInfo,
     PlatformInfo,
     ScenarioConfig,

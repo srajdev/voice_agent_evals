@@ -4,9 +4,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from voice_evals.evaluator import Evaluator, _score_to_label
-from voice_evals.metrics.base import MetricResult, MetricScore
-from voice_evals.trace import ScenarioConfig, Speaker, Turn, VoiceTrace
+from voice_agent_evals.evaluator import Evaluator, _score_to_label
+from voice_agent_evals.metrics.base import MetricResult, MetricScore
+from voice_agent_evals.trace import ScenarioConfig, Speaker, Turn, VoiceTrace
 
 
 def make_trace_with_turns() -> VoiceTrace:
@@ -38,7 +38,7 @@ MOCK_GOOD_RESPONSE = """
 
 @pytest.fixture
 def patched_llm():
-    with patch("voice_evals.metrics.base.call_llm_judge", return_value=MOCK_GOOD_RESPONSE):
+    with patch("voice_agent_evals.metrics.base.call_llm_judge", return_value=MOCK_GOOD_RESPONSE):
         yield
 
 
@@ -86,7 +86,7 @@ def test_evaluator_summary(patched_llm):
 
 def test_evaluator_metric_failure_is_caught():
     """A crashing metric should not kill the entire evaluation."""
-    from voice_evals.metrics.base import BaseMetric
+    from voice_agent_evals.metrics.base import BaseMetric
 
     class BrokenMetric(BaseMetric):
         name = "broken"
@@ -94,7 +94,7 @@ def test_evaluator_metric_failure_is_caught():
         def evaluate(self, trace):
             raise RuntimeError("Simulated metric failure")
 
-    with patch("voice_evals.metrics.base.call_llm_judge", return_value=MOCK_GOOD_RESPONSE):
+    with patch("voice_agent_evals.metrics.base.call_llm_judge", return_value=MOCK_GOOD_RESPONSE):
         trace = make_trace_with_turns()
         evaluator = Evaluator(metrics=[BrokenMetric])
         report = evaluator.run(trace)

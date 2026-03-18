@@ -1,14 +1,14 @@
 """
-CLI for voice-evals.
+CLI for voice-agent-evals.
 
 Usage:
-    voice-evals evaluate path/to/recording.wav
-    voice-evals evaluate path/to/recording.mp3 --scenario scenarios/booking.yaml
-    voice-evals evaluate path/to/recording.wav --model medium --output report.json
+    voice-agent-evals evaluate path/to/recording.wav
+    voice-agent-evals evaluate path/to/recording.mp3 --scenario scenarios/booking.yaml
+    voice-agent-evals evaluate path/to/recording.wav --model medium --output report.json
 
-    voice-evals inspect path/to/recording.wav
-    voice-evals inspect path/to/recording.wav --model small --output trace.json
-    voice-evals inspect path/to/recording.wav --json
+    voice-agent-evals inspect path/to/recording.wav
+    voice-agent-evals inspect path/to/recording.wav --model small --output trace.json
+    voice-agent-evals inspect path/to/recording.wav --json
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 app = typer.Typer(
-    name="voice-evals",
+    name="voice-agent-evals",
     help="Evaluate voice AI agent recordings.",
     add_completion=False,
 )
@@ -54,13 +54,13 @@ def evaluate(
         console.print(f"[red]Error: File not found: {audio_file}[/red]")
         raise typer.Exit(1)
 
-    console.print(f"\n[bold]Voice Evals[/bold] — evaluating [cyan]{audio_file.name}[/cyan]")
+    console.print(f"\n[bold]Voice Agent Evals[/bold] — evaluating [cyan]{audio_file.name}[/cyan]")
 
     # Load optional scenario
     scenario_config = None
     if scenario:
         import yaml
-        from voice_evals.trace import ScenarioConfig
+        from voice_agent_evals.trace import ScenarioConfig
         with open(scenario) as f:
             data = yaml.safe_load(f)
         scenario_config = ScenarioConfig(**data)
@@ -71,7 +71,7 @@ def evaluate(
 
     # Load and process audio
     with console.status("Loading audio..."):
-        from voice_evals.ingestion.audio import load_audio, split_channels
+        from voice_agent_evals.ingestion.audio import load_audio, split_channels
         audio = load_audio(str(audio_file))
     console.print(
         f"  [green]✓[/green] Audio loaded — {audio.duration_ms / 1000:.1f}s, "
@@ -80,11 +80,11 @@ def evaluate(
 
     # Transcribe
     with console.status(f"Transcribing with Whisper ({model})..."):
-        from voice_evals.ingestion.transcribe import (
+        from voice_agent_evals.ingestion.transcribe import (
             WhisperXBackend, merge_and_sort_turns,
             transcribe_stereo, transcribe_with_diarization,
         )
-        from voice_evals.trace import (
+        from voice_agent_evals.trace import (
             AudioInfo, PlatformInfo, Speaker, TimingInfo, Turn, VoiceTrace,
         )
 
@@ -128,7 +128,7 @@ def evaluate(
 
     # Run evaluation
     with console.status("Running LLM evaluation..."):
-        from voice_evals.evaluator import Evaluator, TIER_METRICS
+        from voice_agent_evals.evaluator import Evaluator, TIER_METRICS
         if tier:
             metric_classes = []
             for t in sorted(set(tier)):
@@ -226,12 +226,12 @@ def inspect(
     show_json = json_out or (not table and not json_out)
 
     if show_table:
-        console.print(f"\n[bold]Voice Evals — Inspect[/bold] — [cyan]{audio_file.name}[/cyan]")
+        console.print(f"\n[bold]Voice Agent Evals — Inspect[/bold] — [cyan]{audio_file.name}[/cyan]")
         console.print(f"  Backend: [yellow]{backend}[/yellow]" + (f"  Whisper model: [yellow]{model}[/yellow]" if backend == "whisperx" else "") + "\n")
 
     # Load audio
     with console.status("Loading audio..."):
-        from voice_evals.ingestion.audio import load_audio, split_channels
+        from voice_agent_evals.ingestion.audio import load_audio, split_channels
         audio = load_audio(str(audio_file))
 
     if show_table:
@@ -240,7 +240,7 @@ def inspect(
             f"{audio.n_channels}ch, {audio.sample_rate}Hz"
         )
 
-    from voice_evals.trace import (
+    from voice_agent_evals.trace import (
         AudioInfo, PlatformInfo, Speaker, TimingInfo, Turn, VoiceTrace,
     )
 
@@ -262,7 +262,7 @@ def inspect(
         if show_table:
             console.print("  Sending audio to AssemblyAI for transcription + diarization...")
         try:
-            from voice_evals.ingestion.transcribe import AssemblyAIBackend, transcribe_with_assemblyai
+            from voice_agent_evals.ingestion.transcribe import AssemblyAIBackend, transcribe_with_assemblyai
             aai_backend = AssemblyAIBackend(num_speakers=num_speakers)
             with console.status("Transcribing + diarizing with AssemblyAI..."):
                 diarized, speaker_map = transcribe_with_assemblyai(str(audio_file), aai_backend)
@@ -286,7 +286,7 @@ def inspect(
         if show_table:
             console.print(f"  Loading WhisperX '{model}' model (may download on first use)...")
         try:
-            from voice_evals.ingestion.transcribe import (
+            from voice_agent_evals.ingestion.transcribe import (
                 WhisperXBackend, merge_and_sort_turns,
                 transcribe_stereo, transcribe_with_diarization,
             )

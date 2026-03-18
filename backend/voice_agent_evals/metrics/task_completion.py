@@ -9,14 +9,14 @@ Evaluates whether the scripted task was completed end-to-end.
 
 from __future__ import annotations
 
-from voice_evals.metrics.base import (
+from voice_agent_evals.metrics.base import (
     BaseMetric,
     MetricResult,
     MetricScore,
     call_llm_judge,
     parse_score_response,
 )
-from voice_evals.trace import VoiceTrace
+from voice_agent_evals.trace import VoiceTrace
 
 SYSTEM_PROMPT = """You are an expert evaluator of voice AI agents. Your job is to determine
 whether the agent successfully completed the user's task by the end of the conversation.

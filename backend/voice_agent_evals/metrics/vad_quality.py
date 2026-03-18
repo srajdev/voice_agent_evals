@@ -18,14 +18,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from voice_evals.metrics.base import (
+from voice_agent_evals.metrics.base import (
     BaseMetric,
     MetricResult,
     MetricScore,
     call_llm_judge,
     parse_score_response,
 )
-from voice_evals.trace import Speaker, Turn, VoiceTrace
+from voice_agent_evals.trace import Speaker, Turn, VoiceTrace
 
 # ──────────────────────────────────────────────────────────────────────────────
 # VAD False Positive Detection

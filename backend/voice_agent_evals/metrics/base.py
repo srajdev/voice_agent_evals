@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from voice_evals.trace import VoiceTrace
+from voice_agent_evals.trace import VoiceTrace
 
 
 class MetricScore(BaseModel):
