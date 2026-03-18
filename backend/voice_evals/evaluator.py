@@ -22,7 +22,14 @@ from voice_evals.metrics.base import BaseMetric, MetricResult
 from voice_evals.metrics.coherence import CoherenceMetric
 from voice_evals.metrics.conversation_quality import ConversationQualityMetric
 from voice_evals.metrics.intent import IntentAccuracyMetric
+from voice_evals.metrics.response_latency import ResponseLatencyMetric
+from voice_evals.metrics.speech_style import (
+    EmpathyMetric,
+    VerbosityMatchMetric,
+    VocabularyMatchMetric,
+)
 from voice_evals.metrics.task_completion import TaskCompletionMetric
+from voice_evals.metrics.vad_quality import InterruptionRecoveryMetric, VadQualityMetric
 from voice_evals.trace import VoiceTrace
 
 
@@ -60,11 +67,14 @@ class EvaluationReport(BaseModel):
         return sum(valid) / len(valid) if valid else 0.0
 
 
+TIER_METRICS: dict[int, list[type[BaseMetric]]] = {
+    1: [ConversationQualityMetric, CoherenceMetric, IntentAccuracyMetric, TaskCompletionMetric],
+    2: [ResponseLatencyMetric, VadQualityMetric, InterruptionRecoveryMetric],
+    3: [VerbosityMatchMetric, EmpathyMetric, VocabularyMatchMetric],
+}
+
 DEFAULT_METRICS: list[type[BaseMetric]] = [
-    ConversationQualityMetric,
-    CoherenceMetric,
-    IntentAccuracyMetric,
-    TaskCompletionMetric,
+    metric for tier_metrics in TIER_METRICS.values() for metric in tier_metrics
 ]
 
 
