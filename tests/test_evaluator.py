@@ -48,18 +48,18 @@ def test_evaluator_runs_all_metrics(patched_llm):
     report = evaluator.run(trace)
 
     assert report.trace_id == trace.trace_id
-    assert len(report.results) == 10  # 4 Tier 1 + 3 Tier 2 + 3 Tier 3 metrics
+    assert len(report.results) == 10  # 4 outcome + 3 technical + 3 quality metrics
     metric_names = {r.metric_name for r in report.results}
-    # Tier 1
+    # Outcome metrics
     assert "conversation_quality" in metric_names
     assert "coherence" in metric_names
     assert "intent_accuracy" in metric_names
     assert "task_completion" in metric_names
-    # Tier 2
+    # Technical metrics
     assert "response_latency" in metric_names
     assert "vad_quality" in metric_names
     assert "interruption_recovery" in metric_names
-    # Tier 3
+    # Quality metrics
     assert "verbosity_match" in metric_names
     assert "empathy" in metric_names
     assert "vocabulary_match" in metric_names

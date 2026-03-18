@@ -104,17 +104,17 @@ expected_intents:
 
 See `scenarios/` for examples.
 
-## Metric tiers
+## Metric groups
 
-### Tier 1 (implemented): LLM-judge metrics
+### Outcome Metrics (implemented): LLM-judge metrics
 Work from any recording or transcript. Use Claude as the judge.
 
-### Tier 2 (planned): Timing metrics
+### Technical Metrics (planned): Timing metrics
 - **TTFW** (Time to First Word): user speech end → agent first audio byte
 - **Interruption recovery rate**: % of barge-ins handled gracefully
 - **VAD false positive rate**: noise-triggered activations
 
-### Tier 3 (planned): Audio signal quality
+### Quality Metrics (planned): Audio signal quality
 - **WER** (Word Error Rate): STT accuracy against ground truth
 - **MOS** (Mean Opinion Score): does the agent sound like a robot?
 - **SNR**: signal-to-noise ratio

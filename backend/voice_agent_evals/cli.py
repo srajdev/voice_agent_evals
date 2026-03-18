@@ -44,9 +44,9 @@ def evaluate(
         None, "--output", "-o", help="Save JSON report to this path"
     ),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Show per-metric details"),
-    tier: Optional[list[int]] = typer.Option(
+    tier: Optional[list[str]] = typer.Option(
         None, "--tier", "-t",
-        help="Metric tier(s) to run (1, 2, 3). Repeatable. Default: all tiers."
+        help="Metric group(s) to run (outcome, technical, quality). Repeatable. Default: all."
     ),
 ):
     """Evaluate a voice recording and print a scored report."""
@@ -134,7 +134,7 @@ def evaluate(
             for t in sorted(set(tier)):
                 if t not in TIER_METRICS:
                     valid = sorted(TIER_METRICS)
-                    console.print(f"[red]Error: Unknown tier {t}. Valid tiers: {valid}[/red]")
+                    console.print(f"[red]Error: Unknown metric group '{t}'. Valid groups: {valid}[/red]")
                     raise typer.Exit(1)
                 metric_classes.extend(TIER_METRICS[t])
         else:

@@ -67,10 +67,10 @@ class EvaluationReport(BaseModel):
         return sum(valid) / len(valid) if valid else 0.0
 
 
-TIER_METRICS: dict[int, list[type[BaseMetric]]] = {
-    1: [ConversationQualityMetric, CoherenceMetric, IntentAccuracyMetric, TaskCompletionMetric],
-    2: [ResponseLatencyMetric, VadQualityMetric, InterruptionRecoveryMetric],
-    3: [VerbosityMatchMetric, EmpathyMetric, VocabularyMatchMetric],
+TIER_METRICS: dict[str, list[type[BaseMetric]]] = {
+    "outcome": [ConversationQualityMetric, CoherenceMetric, IntentAccuracyMetric, TaskCompletionMetric],
+    "technical": [ResponseLatencyMetric, VadQualityMetric, InterruptionRecoveryMetric],
+    "quality": [VerbosityMatchMetric, EmpathyMetric, VocabularyMatchMetric],
 }
 
 DEFAULT_METRICS: list[type[BaseMetric]] = [
@@ -83,7 +83,7 @@ class Evaluator:
     Orchestrates running metrics against a VoiceTrace.
 
     Args:
-        metrics: List of metric classes to run. Defaults to all Tier 1 metrics.
+        metrics: List of metric classes to run. Defaults to all metrics (outcome + technical + quality).
         embed_trace: Whether to embed the full trace in the report (useful for standalone reports).
     """
 

@@ -1,5 +1,5 @@
 """
-VAD Quality Metrics (Tier 2)
+VAD Quality Metrics (Technical)
 
 Two metrics in one module:
 

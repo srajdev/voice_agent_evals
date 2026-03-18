@@ -1,5 +1,5 @@
 """
-Intent Accuracy Metric (Tier 1 — LLM Judge)
+Intent Accuracy Metric (Outcome — LLM Judge)
 
 Evaluates whether the agent correctly interpreted user intent for each turn.
 Requires a ScenarioConfig with expected_intents populated.
