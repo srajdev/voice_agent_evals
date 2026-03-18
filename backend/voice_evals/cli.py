@@ -79,14 +79,14 @@ def evaluate(
     # Transcribe
     with console.status(f"Transcribing with Whisper ({model})..."):
         from voice_evals.ingestion.transcribe import (
-            WhisperBackend, merge_and_sort_turns,
-            transcribe_stereo, transcribe_mono,
+            WhisperXBackend, merge_and_sort_turns,
+            transcribe_stereo, transcribe_with_diarization,
         )
         from voice_evals.trace import (
             AudioInfo, PlatformInfo, Speaker, TimingInfo, Turn, VoiceTrace,
         )
 
-        backend = WhisperBackend(model_size=model)
+        backend = WhisperXBackend(model_size=model)
         trace = VoiceTrace(
             audio_info=AudioInfo(
                 original_file=audio_file.name,
@@ -113,12 +113,13 @@ def evaluate(
                     timing=TimingInfo(speech_start_ms=seg.start_ms, speech_end_ms=seg.end_ms, source="vad"),
                 ))
         else:
-            result = transcribe_mono(audio.mono_mix, audio.sample_rate, backend)
-            for i, seg in enumerate(result.segments):
+            diarized, speaker_map = transcribe_with_diarization(audio.mono_mix, audio.sample_rate, backend)
+            for seg in diarized.segments:
+                spk = speaker_map.get(seg.speaker, "user")
                 trace.add_turn(Turn(
-                    speaker=Speaker.USER if i % 2 == 0 else Speaker.AGENT,
+                    speaker=Speaker.AGENT if spk == "agent" else Speaker.USER,
                     transcript=seg.text,
-                    timing=TimingInfo(speech_start_ms=seg.start_ms, speech_end_ms=seg.end_ms, source="estimated"),
+                    timing=TimingInfo(speech_start_ms=seg.start_ms, speech_end_ms=seg.end_ms, source="vad"),
                 ))
 
     console.print(f"  [green]✓[/green] Transcription complete — {len(trace.turns)} turns detected")
