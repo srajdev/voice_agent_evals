@@ -11,14 +11,14 @@ Evaluates whether the voice agent follows good voice-first communication princip
 
 from __future__ import annotations
 
-from voice_evals.metrics.base import (
+from voice_agent_evals.metrics.base import (
     BaseMetric,
     MetricResult,
     MetricScore,
     call_llm_judge,
     parse_score_response,
 )
-from voice_evals.trace import Speaker, VoiceTrace
+from voice_agent_evals.trace import Speaker, VoiceTrace
 
 SYSTEM_PROMPT = """You are an expert evaluator of voice AI agents. Your job is to assess whether
 the agent's speech follows good voice-first communication principles.

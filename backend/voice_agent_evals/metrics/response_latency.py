@@ -16,8 +16,8 @@ from __future__ import annotations
 import statistics
 from typing import Any
 
-from voice_evals.metrics.base import BaseMetric, MetricResult, MetricScore
-from voice_evals.trace import Speaker, VoiceTrace
+from voice_agent_evals.metrics.base import BaseMetric, MetricResult, MetricScore
+from voice_agent_evals.trace import Speaker, VoiceTrace
 
 
 class ResponseLatencyMetric(BaseMetric):

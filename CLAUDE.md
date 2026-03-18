@@ -6,13 +6,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 1. Before writing any code, describe your approach and wait for approval. Always ask clarifying questions before writing any code if requirements ar      e     ambiguous.
 2. If a task requires changes to more than 3 files, stop and break it into smaller tasks first.
 3. After writing code, list what could break and suggest tests to cover it.
-4. When there’s a bug, start by writing a test that reproduces it, then fix it until the test passes.
+4. When there's a bug, start by writing a test that reproduces it, then fix it until the test passes.
 5. Every time I correct you, add a new rule to the CLAUDE .md file so it never happens again.
 6. Everytime you start a new feature, create a new branch so we can track
 
 ## Project Overview
 
-**Voice Evals** is an open-source framework for evaluating voice AI agents. It takes a voice call recording and scores it across four dimensions using Claude as an LLM judge: Conversation Quality, Multi-turn Coherence, Intent Accuracy, and Task Completion.
+**Voice Agent Evals** is an open-source framework for evaluating voice AI agents. It takes a voice call recording and scores it across four dimensions using Claude as an LLM judge: Conversation Quality, Multi-turn Coherence, Intent Accuracy, and Task Completion.
 
 ## Commands
 
@@ -23,8 +23,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 uv sync
 
 # Run CLI evaluation
-uv run voice-evals evaluate path/to/recording.wav
-uv run voice-evals evaluate recording.wav --scenario scenarios/restaurant-booking.yaml --verbose
+uv run voice-agent-evals evaluate path/to/recording.wav
+uv run voice-agent-evals evaluate recording.wav --scenario scenarios/restaurant-booking.yaml --verbose
 
 # Start API server
 cd backend && uv run uvicorn api.main:app --reload --port 8000
@@ -39,7 +39,7 @@ uv run pytest tests/test_evaluator.py
 uv run ruff check .
 
 # Type check
-uv run mypy backend/voice_evals
+uv run mypy backend/voice_agent_evals
 ```
 
 ### Frontend (React/TypeScript)
@@ -68,23 +68,23 @@ Audio File → load_audio() → [split_channels()] → WhisperBackend.transcribe
     → build_trace() → VoiceTrace → Evaluator.run() → EvaluationReport
 ```
 
-**VoiceTrace** (`backend/voice_evals/trace.py`) is the canonical platform-agnostic schema — the contract between ingestion and evaluation. All metrics operate on this model.
+**VoiceTrace** (`backend/voice_agent_evals/trace.py`) is the canonical platform-agnostic schema — the contract between ingestion and evaluation. All metrics operate on this model.
 
 ### Backend Structure
 
-- **`voice_evals/ingestion/audio.py`** — Loads WAV/MP3/OGG/M4A/FLAC, normalizes to 16kHz float32. For stereo: left channel = user, right channel = agent.
-- **`voice_evals/ingestion/transcribe.py`** — Pluggable `TranscriptionBackend` ABC; `WhisperBackend` is the default implementation. `transcribe_stereo()` processes each channel separately for clean speaker attribution.
-- **`voice_evals/metrics/base.py`** — `BaseMetric` ABC with `evaluate(trace) -> MetricResult`. Contains `call_llm_judge()` and `parse_score_response()` utilities shared by all metrics.
-- **`voice_evals/metrics/`** — Four Tier 1 metrics: `conversation_quality`, `coherence`, `intent`, `task_completion`. Each calls Claude as a judge and returns a score (0.0–1.0) with reasoning.
-- **`voice_evals/evaluator.py`** — Orchestrates all metrics; one metric failure is isolated and does not abort others.
-- **`voice_evals/cli.py`** — Typer CLI; entry point is `voice-evals evaluate`.
+- **`voice_agent_evals/ingestion/audio.py`** — Loads WAV/MP3/OGG/M4A/FLAC, normalizes to 16kHz float32. For stereo: left channel = user, right channel = agent.
+- **`voice_agent_evals/ingestion/transcribe.py`** — Pluggable `TranscriptionBackend` ABC; `WhisperBackend` is the default implementation. `transcribe_stereo()` processes each channel separately for clean speaker attribution.
+- **`voice_agent_evals/metrics/base.py`** — `BaseMetric` ABC with `evaluate(trace) -> MetricResult`. Contains `call_llm_judge()` and `parse_score_response()` utilities shared by all metrics.
+- **`voice_agent_evals/metrics/`** — Four Outcome metrics: `conversation_quality`, `coherence`, `intent`, `task_completion`. Each calls Claude as a judge and returns a score (0.0–1.0) with reasoning.
+- **`voice_agent_evals/evaluator.py`** — Orchestrates all metrics; one metric failure is isolated and does not abort others.
+- **`voice_agent_evals/cli.py`** — Typer CLI; entry point is `voice-agent-evals evaluate`.
 - **`api/`** — FastAPI app. `POST /api/v1/evaluate` accepts audio + optional scenario YAML (max 100MB). Reports stored in-memory (swap for DB in production).
 
 ### Metric Tiers
 
-- **Tier 1 (implemented)**: LLM-judge metrics (the four above)
-- **Tier 2 (planned)**: Timing metrics (latency, TTFW)
-- **Tier 3 (planned)**: Audio signal quality
+- **Outcome Metrics (implemented)**: LLM-judge metrics (the four above)
+- **Technical Metrics (planned)**: Timing metrics (latency, TTFW)
+- **Quality Metrics (planned)**: Audio signal quality
 
 ### Scenarios
 

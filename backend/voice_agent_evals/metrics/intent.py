@@ -10,14 +10,14 @@ If no expected intents are provided, falls back to inferred intent assessment
 
 from __future__ import annotations
 
-from voice_evals.metrics.base import (
+from voice_agent_evals.metrics.base import (
     BaseMetric,
     MetricResult,
     MetricScore,
     call_llm_judge,
     parse_score_response,
 )
-from voice_evals.trace import Speaker, Turn, VoiceTrace
+from voice_agent_evals.trace import Speaker, Turn, VoiceTrace
 
 SYSTEM_PROMPT_WITH_EXPECTED = """You are an expert evaluator of voice AI agents. Your job is to
 assess whether the agent correctly interpreted the user's intent at each turn.

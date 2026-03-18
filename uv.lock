@@ -5171,7 +5171,7 @@ wheels = [
 ]
 
 [[package]]
-name = "voice-evals"
+name = "voice-agent-evals"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

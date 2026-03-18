@@ -1,10 +1,10 @@
-# Voice Evals
+# Voice Agent Evals
 
 An open-source, tech-stack-independent framework for evaluating voice AI agents.
 
 ## What it does
 
-Voice Evals takes a voice call recording (or a live webhook stream) and scores it across four dimensions:
+Voice Agent Evals takes a voice call recording (or a live webhook stream) and scores it across four dimensions:
 
 | Metric | What it measures |
 |---|---|
@@ -20,8 +20,8 @@ Voice Evals takes a voice call recording (or a live webhook stream) and scores i
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Clone and set up
-git clone https://github.com/your-org/voice-evals
-cd voice-evals
+git clone https://github.com/your-org/voice-agent-evals
+cd voice-agent-evals
 
 # Create venv + install all dependencies (including dev)
 uv sync
@@ -31,10 +31,10 @@ cp .env.example .env
 # Edit .env and add your ANTHROPIC_API_KEY
 
 # Evaluate a recording
-uv run voice-evals evaluate path/to/recording.wav
+uv run voice-agent-evals evaluate path/to/recording.wav
 
 # With a scenario config for richer scoring
-uv run voice-evals evaluate recording.wav --scenario scenarios/restaurant-booking.yaml
+uv run voice-agent-evals evaluate recording.wav --scenario scenarios/restaurant-booking.yaml
 
 # Run tests
 uv run pytest
@@ -49,9 +49,9 @@ cd frontend && npm install && npm run dev
 ## Project structure
 
 ```
-voice-evals/
+voice-agent-evals/
 ├── backend/
-│   ├── voice_evals/
+│   ├── voice_agent_evals/
 │   │   ├── trace.py              # VoiceTrace schema (canonical data model)
 │   │   ├── ingestion/
 │   │   │   ├── audio.py          # Load WAV/MP3/OGG, split channels
@@ -62,7 +62,7 @@ voice-evals/
 │   │   │   ├── intent.py
 │   │   │   └── task_completion.py
 │   │   ├── evaluator.py          # Orchestrates full evaluation run
-│   │   └── cli.py                # CLI (voice-evals command)
+│   │   └── cli.py                # CLI (voice-agent-evals command)
 │   └── api/
 │       ├── main.py               # FastAPI app
 │       └── routes/
@@ -79,7 +79,7 @@ voice-evals/
 Upload any audio recording. No platform integration needed.
 
 ```bash
-voice-evals evaluate recording.wav --model base
+voice-agent-evals evaluate recording.wav --model base
 ```
 
 **Stereo audio** (left = user, right = agent) gives cleaner per-speaker analysis. Mono audio uses VAD-based turn segmentation as a fallback.

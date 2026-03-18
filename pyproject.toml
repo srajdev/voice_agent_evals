@@ -13,7 +13,7 @@ dev = [
 ]
 
 [project]
-name = "voice-evals"
+name = "voice-agent-evals"
 version = "0.1.0"
 description = "Open-source framework for evaluating voice AI agents"
 readme = "README.md"
@@ -45,10 +45,10 @@ dependencies = [
 
 
 [project.scripts]
-voice-evals = "voice_evals.cli:app"
+voice-agent-evals = "voice_agent_evals.cli:app"
 
 [tool.hatch.build.targets.wheel]
-packages = ["backend/voice_evals"]
+packages = ["backend/voice_agent_evals"]
 
 [tool.ruff]
 line-length = 100
