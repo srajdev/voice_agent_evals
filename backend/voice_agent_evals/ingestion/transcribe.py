@@ -481,7 +481,8 @@ def transcribe_with_diarization(
     samples: np.ndarray,
     sample_rate: int,
     backend: WhisperXBackend,
-    first_speaker: str = "auto",
+    speaker_recognition: str = "diarization",
+    first_speaker: str = "agent",
     scenario_task: str | None = None,
 ) -> tuple[DiarizedResult, dict[str, str]]:
     """
@@ -491,9 +492,12 @@ def transcribe_with_diarization(
     diarization speaker IDs (e.g. "SPEAKER_00") to "user" or "agent".
 
     Args:
-        first_speaker: "auto" (LLM speaker-ID classification), "llm" (per-turn LLM
-                       assignment), "agent" (first heard = agent), or "user" (first
-                       heard = user).
+        speaker_recognition: How to assign roles to speakers.
+            "diarization" — use first_speaker heuristic (default).
+            "llm-fast"    — LLM classifies speaker IDs using ~10 segments.
+            "llm-turn"    — LLM assigns a role to every turn individually.
+        first_speaker: "agent" (default) or "user". Only used when
+            speaker_recognition="diarization".
         scenario_task: Optional expected task hint passed to LLM classification.
     """
     result = backend.transcribe_with_diarization(samples, sample_rate)
@@ -503,7 +507,7 @@ def transcribe_with_diarization(
         if seg.speaker not in seen:
             seen.append(seg.speaker)
 
-    if first_speaker == "llm":
+    if speaker_recognition == "llm-turn":
         per_turn_roles = assign_roles_per_turn_with_llm(result.segments, scenario_task)
         if per_turn_roles is not None:
             for seg, role in zip(result.segments, per_turn_roles):
@@ -511,7 +515,7 @@ def transcribe_with_diarization(
             speaker_map = {role: role for role in ("agent", "user")}
         else:
             speaker_map = _build_speaker_map(seen, "agent")
-    elif first_speaker == "auto":
+    elif speaker_recognition == "llm-fast":
         llm_result = classify_speakers_with_llm(result.segments, scenario_task)
         if llm_result:
             agent_spk = llm_result["agent_speaker"]
@@ -526,7 +530,7 @@ def transcribe_with_diarization(
                     speaker_map[spk] = "user"
         else:
             speaker_map = _build_speaker_map(seen, "agent")
-    else:
+    else:  # "diarization"
         speaker_map = _build_speaker_map(seen, first_speaker)
 
     return result, speaker_map
@@ -606,7 +610,8 @@ class AssemblyAIBackend:
 def transcribe_with_assemblyai(
     audio_path: str,
     backend: AssemblyAIBackend,
-    first_speaker: str = "auto",
+    speaker_recognition: str = "diarization",
+    first_speaker: str = "agent",
     scenario_task: str | None = None,
 ) -> tuple[DiarizedResult, dict[str, str]]:
     """
@@ -616,9 +621,12 @@ def transcribe_with_assemblyai(
     AssemblyAI speaker IDs (e.g. "SPEAKER_A") to "user" or "agent".
 
     Args:
-        first_speaker: "auto" (LLM speaker-ID classification), "llm" (per-turn LLM
-                       assignment), "agent" (first heard = agent), or "user" (first
-                       heard = user).
+        speaker_recognition: How to assign roles to speakers.
+            "diarization" — use first_speaker heuristic (default).
+            "llm-fast"    — LLM classifies speaker IDs using ~10 segments.
+            "llm-turn"    — LLM assigns a role to every turn individually.
+        first_speaker: "agent" (default) or "user". Only used when
+            speaker_recognition="diarization".
         scenario_task: Optional expected task hint passed to LLM classification.
     """
     result = backend.transcribe_with_diarization(audio_path)
@@ -628,7 +636,7 @@ def transcribe_with_assemblyai(
         if seg.speaker not in seen:
             seen.append(seg.speaker)
 
-    if first_speaker == "llm":
+    if speaker_recognition == "llm-turn":
         per_turn_roles = assign_roles_per_turn_with_llm(result.segments, scenario_task)
         if per_turn_roles is not None:
             for seg, role in zip(result.segments, per_turn_roles):
@@ -636,7 +644,7 @@ def transcribe_with_assemblyai(
             speaker_map = {role: role for role in ("agent", "user")}
         else:
             speaker_map = _build_speaker_map(seen, "agent")
-    elif first_speaker == "auto":
+    elif speaker_recognition == "llm-fast":
         llm_result = classify_speakers_with_llm(result.segments, scenario_task)
         if llm_result:
             agent_spk = llm_result["agent_speaker"]
@@ -651,7 +659,7 @@ def transcribe_with_assemblyai(
                     speaker_map[spk] = "user"
         else:
             speaker_map = _build_speaker_map(seen, "agent")
-    else:
+    else:  # "diarization"
         speaker_map = _build_speaker_map(seen, first_speaker)
 
     return result, speaker_map

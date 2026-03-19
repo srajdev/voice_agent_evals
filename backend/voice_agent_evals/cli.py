@@ -48,9 +48,13 @@ def evaluate(
         None, "--tier", "-t",
         help="Metric group(s) to run (outcome, technical, quality). Repeatable. Default: all."
     ),
+    speaker_recognition: str = typer.Option(
+        "diarization", "--speaker-recognition",
+        help="Mono speaker role assignment: diarization, llm-fast, or llm-turn.",
+    ),
     first_speaker: str = typer.Option(
-        "auto", "--first-speaker",
-        help="Mono audio speaker assignment: auto (LLM by speaker ID), llm (LLM per-turn), agent, or user.",
+        "agent", "--first-speaker",
+        help="When --speaker-recognition=diarization: which role the first heard speaker has (agent or user).",
     ),
 ):
     """Evaluate a voice recording and print a scored report."""
@@ -122,6 +126,7 @@ def evaluate(
             scenario_task = scenario_config.expected_task if scenario_config else None
             diarized, speaker_map = transcribe_with_diarization(
                 audio.mono_mix, audio.sample_rate, backend,
+                speaker_recognition=speaker_recognition,
                 first_speaker=first_speaker,
                 scenario_task=scenario_task,
             )
@@ -220,9 +225,13 @@ def inspect(
     json_out: bool = typer.Option(False, "--json", help="Show JSON only"),
     backend: str = typer.Option("whisperx", "--backend", "-b", help="Transcription backend: whisperx, assemblyai"),
     num_speakers: Optional[int] = typer.Option(None, "--speakers", help="Number of speakers hint for diarization (auto-detected if omitted)"),
+    speaker_recognition: str = typer.Option(
+        "diarization", "--speaker-recognition",
+        help="Mono speaker role assignment: diarization, llm-fast, or llm-turn.",
+    ),
     first_speaker: str = typer.Option(
-        "auto", "--first-speaker",
-        help="Mono audio speaker assignment: auto (LLM by speaker ID), llm (LLM per-turn), agent, or user.",
+        "agent", "--first-speaker",
+        help="When --speaker-recognition=diarization: which role the first heard speaker has (agent or user).",
     ),
     debug: bool = typer.Option(False, "--debug", help="Show debug logs (LLM classification reasoning, etc.)"),
 ):
@@ -284,6 +293,7 @@ def inspect(
             with console.status("Transcribing + diarizing with AssemblyAI..."):
                 diarized, speaker_map = transcribe_with_assemblyai(
                     str(audio_file), aai_backend,
+                    speaker_recognition=speaker_recognition,
                     first_speaker=first_speaker,
                 )
         except RuntimeError as e:
@@ -342,6 +352,7 @@ def inspect(
                 try:
                     diarized, speaker_map = transcribe_with_diarization(
                         audio.mono_mix, audio.sample_rate, wx_backend,
+                        speaker_recognition=speaker_recognition,
                         first_speaker=first_speaker,
                     )
                 except RuntimeError as e:
