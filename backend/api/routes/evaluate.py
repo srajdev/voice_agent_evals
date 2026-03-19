@@ -47,6 +47,10 @@ async def evaluate_audio(
     scenario_yaml: str | None = Form(None, description="Optional YAML scenario config"),
     whisper_model: str = Form("base", description="Whisper model size: tiny/base/small/medium"),
     embed_trace: bool = Form(False, description="Embed full trace in response"),
+    first_speaker: str = Form(
+        "auto",
+        description="Mono audio speaker assignment: auto (LLM-detect), agent, or user.",
+    ),
 ):
     """
     Upload an audio recording and run full voice evaluation.
@@ -83,8 +87,14 @@ async def evaluate_audio(
         tmp.write(content)
         tmp_path = tmp.name
 
+    if first_speaker not in ("auto", "llm", "agent", "user"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid first_speaker '{first_speaker}'. Must be: auto, llm, agent, or user.",
+        )
+
     try:
-        trace = await _build_trace(tmp_path, scenario, whisper_model)
+        trace = await _build_trace(tmp_path, scenario, whisper_model, first_speaker)
     except Exception as e:
         raise HTTPException(status_code=422, detail=f"Audio processing failed: {e}")
     finally:
@@ -107,6 +117,7 @@ async def _build_trace(
     audio_path: str,
     scenario: ScenarioConfig | None,
     whisper_model: str,
+    first_speaker: str = "auto",
 ) -> VoiceTrace:
     """Load audio, transcribe, and build a VoiceTrace."""
     audio = load_audio(audio_path)
@@ -145,8 +156,11 @@ async def _build_trace(
                 ),
             ))
     else:
+        scenario_task = scenario.expected_task if scenario else None
         diarized, speaker_map = transcribe_with_diarization(
-            audio.mono_mix, audio.sample_rate, backend
+            audio.mono_mix, audio.sample_rate, backend,
+            first_speaker=first_speaker,
+            scenario_task=scenario_task,
         )
         for seg in diarized.segments:
             spk = speaker_map.get(seg.speaker, "user")

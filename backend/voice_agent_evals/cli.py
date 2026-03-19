@@ -48,6 +48,10 @@ def evaluate(
         None, "--tier", "-t",
         help="Metric group(s) to run (outcome, technical, quality). Repeatable. Default: all."
     ),
+    first_speaker: str = typer.Option(
+        "auto", "--first-speaker",
+        help="Mono audio speaker assignment: auto (LLM by speaker ID), llm (LLM per-turn), agent, or user.",
+    ),
 ):
     """Evaluate a voice recording and print a scored report."""
     if not audio_file.exists():
@@ -115,7 +119,12 @@ def evaluate(
                     timing=TimingInfo(speech_start_ms=seg.start_ms, speech_end_ms=seg.end_ms, source="vad"),
                 ))
         else:
-            diarized, speaker_map = transcribe_with_diarization(audio.mono_mix, audio.sample_rate, backend)
+            scenario_task = scenario_config.expected_task if scenario_config else None
+            diarized, speaker_map = transcribe_with_diarization(
+                audio.mono_mix, audio.sample_rate, backend,
+                first_speaker=first_speaker,
+                scenario_task=scenario_task,
+            )
             for seg in diarized.segments:
                 spk = speaker_map.get(seg.speaker, "user")
                 trace.add_turn(Turn(
@@ -211,8 +220,16 @@ def inspect(
     json_out: bool = typer.Option(False, "--json", help="Show JSON only"),
     backend: str = typer.Option("whisperx", "--backend", "-b", help="Transcription backend: whisperx, assemblyai"),
     num_speakers: Optional[int] = typer.Option(None, "--speakers", help="Number of speakers hint for diarization (auto-detected if omitted)"),
+    first_speaker: str = typer.Option(
+        "auto", "--first-speaker",
+        help="Mono audio speaker assignment: auto (LLM by speaker ID), llm (LLM per-turn), agent, or user.",
+    ),
+    debug: bool = typer.Option(False, "--debug", help="Show debug logs (LLM classification reasoning, etc.)"),
 ):
     """Transcribe a recording and print the VoiceTrace. Stops before LLM evaluation."""
+    import logging as _logging
+    if debug:
+        _logging.basicConfig(level=_logging.INFO, format="[%(levelname)s] %(message)s")
     if not audio_file.exists():
         console.print(f"[red]Error: File not found: {audio_file}[/red]")
         raise typer.Exit(1)
@@ -265,7 +282,10 @@ def inspect(
             from voice_agent_evals.ingestion.transcribe import AssemblyAIBackend, transcribe_with_assemblyai
             aai_backend = AssemblyAIBackend(num_speakers=num_speakers)
             with console.status("Transcribing + diarizing with AssemblyAI..."):
-                diarized, speaker_map = transcribe_with_assemblyai(str(audio_file), aai_backend)
+                diarized, speaker_map = transcribe_with_assemblyai(
+                    str(audio_file), aai_backend,
+                    first_speaker=first_speaker,
+                )
         except RuntimeError as e:
             console.print(f"[red]Error: {e}[/red]")
             raise typer.Exit(1)
@@ -321,7 +341,8 @@ def inspect(
                     console.print("  Mono audio — running transcription and speaker diarization...")
                 try:
                     diarized, speaker_map = transcribe_with_diarization(
-                        audio.mono_mix, audio.sample_rate, wx_backend
+                        audio.mono_mix, audio.sample_rate, wx_backend,
+                        first_speaker=first_speaker,
                     )
                 except RuntimeError as e:
                     console.print(f"[red]Error: {e}[/red]")
