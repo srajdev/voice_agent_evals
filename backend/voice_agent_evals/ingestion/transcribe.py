@@ -15,6 +15,8 @@ Requires:
 
 from __future__ import annotations
 
+import json
+import logging
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -290,17 +292,123 @@ def transcribe_stereo(
     return user_result, agent_result
 
 
+def assign_roles_per_turn_with_llm(
+    segments: list[DiarizedSegment],
+    scenario_task: str | None = None,
+) -> list[str] | None:
+    """
+    Use Claude to assign "agent" or "user" to each diarized segment individually.
+
+    Sends the full transcript to Claude and asks it to label each turn by content,
+    ignoring diarization speaker IDs. This handles diarization errors where the same
+    real speaker appears under multiple IDs, or multiple real speakers share one ID.
+
+    Returns a list of role strings (["agent", "user", ...]) aligned to segments,
+    or None on failure (caller should fallback to first-speaker heuristic).
+    """
+    try:
+        import anthropic
+    except ImportError:
+        logging.warning("anthropic package not installed — skipping LLM speaker classification")
+        return None
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        logging.warning("ANTHROPIC_API_KEY not set — skipping LLM speaker classification")
+        return None
+
+    scenario_hint = (
+        f"\nThe expected task for this call is: {scenario_task}" if scenario_task else ""
+    )
+
+    turns_text = "\n".join(
+        f"{i + 1} [{seg.speaker}]: {seg.text}" for i, seg in enumerate(segments)
+    )
+
+    prompt = (
+        f"You are analyzing a diarized voice call transcript. Speaker IDs (SPEAKER_XX) "
+        f"are unreliable — the same real speaker may appear under different IDs, and one "
+        f"ID may contain turns from different real speakers. Ignore the IDs entirely and "
+        f"assign roles based on what each turn actually says.{scenario_hint}\n\n"
+        f"Agent characteristics: hold/connect messages, formal greetings, scripted "
+        f"language, offers assistance, provides information.\n"
+        f"User characteristics: responds to questions, makes requests, provides personal "
+        f"details, more conversational.\n\n"
+        f"Transcript:\n{turns_text}\n\n"
+        f"Respond with ONLY a JSON array with one entry per turn in order:\n"
+        f'[{{"turn": 1, "role": "agent"}}, {{"turn": 2, "role": "user"}}, ...]\n\n'
+        f"Every turn must have a role. Use exactly the strings \"agent\" or \"user\"."
+    )
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        message = client.messages.create(
+            model=os.environ.get("VOICE_EVALS_MODEL", "claude-sonnet-4-6"),
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        response_text = message.content[0].text.strip()
+        if response_text.startswith("```"):
+            parts = response_text.split("```")
+            response_text = parts[1] if len(parts) > 1 else response_text
+            if response_text.startswith("json"):
+                response_text = response_text[4:]
+        result = json.loads(response_text.strip())
+
+        if not isinstance(result, list) or len(result) != len(segments):
+            logging.warning(
+                "LLM per-turn classification returned %d entries for %d segments — falling back",
+                len(result) if isinstance(result, list) else -1,
+                len(segments),
+            )
+            return None
+
+        roles = []
+        for entry in result:
+            role = entry.get("role", "").lower()
+            if role not in ("agent", "user"):
+                logging.warning("LLM returned unexpected role '%s' — falling back", role)
+                return None
+            roles.append(role)
+
+        logging.info("LLM per-turn classification complete: %s", roles)
+        return roles
+    except Exception as e:
+        logging.warning(
+            "LLM per-turn classification failed (%s) — falling back to first-speaker=agent", e
+        )
+        return None
+
+
+def _build_speaker_map(seen: list[str], first_speaker: str) -> dict[str, str]:
+    """Build a speaker_map from ordered speaker IDs using the first-speaker convention."""
+    speaker_map: dict[str, str] = {}
+    if first_speaker == "user":
+        for i, spk in enumerate(seen):
+            speaker_map[spk] = "user" if i == 0 else "agent"
+    else:  # "agent" (default/fallback)
+        for i, spk in enumerate(seen):
+            speaker_map[spk] = "agent" if i == 0 else "user"
+    return speaker_map
+
+
 def transcribe_with_diarization(
     samples: np.ndarray,
     sample_rate: int,
     backend: WhisperXBackend,
+    first_speaker: str = "auto",
+    scenario_task: str | None = None,
 ) -> tuple[DiarizedResult, dict[str, str]]:
     """
     Transcribe mono audio with WhisperX diarization.
 
     Returns (DiarizedResult, speaker_map) where speaker_map maps
     diarization speaker IDs (e.g. "SPEAKER_00") to "user" or "agent".
-    Convention: first speaker heard = agent (typical for voice AI calls).
+
+    Args:
+        first_speaker: "auto" (LLM-based classification), "agent" (first heard = agent),
+                       or "user" (first heard = user).
+        scenario_task: Optional expected task hint passed to LLM classification.
     """
     result = backend.transcribe_with_diarization(samples, sample_rate)
 
@@ -308,9 +416,18 @@ def transcribe_with_diarization(
     for seg in result.segments:
         if seg.speaker not in seen:
             seen.append(seg.speaker)
-    speaker_map: dict[str, str] = {}
-    for i, spk in enumerate(seen):
-        speaker_map[spk] = "agent" if i == 0 else "user"
+
+    if first_speaker == "auto":
+        per_turn_roles = assign_roles_per_turn_with_llm(result.segments, scenario_task)
+        if per_turn_roles is not None:
+            # Attach roles directly onto segments so callers can read seg.role
+            for seg, role in zip(result.segments, per_turn_roles):
+                seg.speaker = role  # repurpose speaker field as resolved role
+            speaker_map = {role: role for role in ("agent", "user")}
+        else:
+            speaker_map = _build_speaker_map(seen, "agent")
+    else:
+        speaker_map = _build_speaker_map(seen, first_speaker)
 
     return result, speaker_map
 
@@ -389,13 +506,19 @@ class AssemblyAIBackend:
 def transcribe_with_assemblyai(
     audio_path: str,
     backend: AssemblyAIBackend,
+    first_speaker: str = "auto",
+    scenario_task: str | None = None,
 ) -> tuple[DiarizedResult, dict[str, str]]:
     """
     Transcribe an audio file with AssemblyAI diarization.
 
     Returns (DiarizedResult, speaker_map) where speaker_map maps
     AssemblyAI speaker IDs (e.g. "SPEAKER_A") to "user" or "agent".
-    Convention: first speaker heard = agent (typical for voice AI calls).
+
+    Args:
+        first_speaker: "auto" (LLM-based classification), "agent" (first heard = agent),
+                       or "user" (first heard = user).
+        scenario_task: Optional expected task hint passed to LLM classification.
     """
     result = backend.transcribe_with_diarization(audio_path)
 
@@ -403,9 +526,17 @@ def transcribe_with_assemblyai(
     for seg in result.segments:
         if seg.speaker not in seen:
             seen.append(seg.speaker)
-    speaker_map: dict[str, str] = {}
-    for i, spk in enumerate(seen):
-        speaker_map[spk] = "agent" if i == 0 else "user"
+
+    if first_speaker == "auto":
+        per_turn_roles = assign_roles_per_turn_with_llm(result.segments, scenario_task)
+        if per_turn_roles is not None:
+            for seg, role in zip(result.segments, per_turn_roles):
+                seg.speaker = role
+            speaker_map = {role: role for role in ("agent", "user")}
+        else:
+            speaker_map = _build_speaker_map(seen, "agent")
+    else:
+        speaker_map = _build_speaker_map(seen, first_speaker)
 
     return result, speaker_map
 
